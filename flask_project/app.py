@@ -1,6 +1,5 @@
 #!/usr/bin/python
-
-from flask import Flask
+from flask import Flask, render_template, request
 import RPi.GPIO as GPIO
 import json
 import Adafruit_DHT
@@ -17,10 +16,30 @@ sensor_pin=21
 
 app = Flask(__name__)   # Create an instance of flask called "app"
 
+@app.after_request
+def add_header(r):
+    """
+    Add headers to both force latest IE rendering engine or Chrome Frame,
+    and also to cache the rendered page for 10 minutes.
+    """
+    r.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    r.headers["Pragma"] = "no-cache"
+    r.headers["Expires"] = "0"
+    r.headers['Cache-Control'] = 'public, max-age=0'
+    return r
+
 
 @app.route("/")         # This is our default handler, if no path is given
 def index():
-    return "hello"
+    # Read GPIO Status
+    led0sts = GPIO.input(5)
+    humidity,temperature=Adafruit_DHT.read_retry(sensor,sensor_pin)
+    templateData = {
+            'led0'  : led0sts,
+            'temperature'  : temperature,
+            'humidity'  : humidity
+        }
+    return render_template('dashboard.html', **templateData)
 
 @app.route('/gpio/<string:id>/<string:level>')
 def setGPIOLevel(id, level):

@@ -1,0 +1,35 @@
+<!DOCTYPE html> 
+  <head> 
+     <title>GPIO Control</title> 
+     <!--<link rel="stylesheet" href='../static/master.css'/> -->
+  </head> 
+  <body> 
+	<h1>RPi GPIO Control</h1> 
+	<h2> Sensoren </h2> 
+	<h3> Temperatur ==>  {{ temperature  }}</h3> 
+	<h3> Luftfeuchtigkeit ==>  {{ humidity }}</h3> 
+	<br> 
+	<h2> Aktoren </h2> 
+	<h3> LED1 ==>   
+		{% if  led0   == 1 %} 
+			<a onclick="toggle(this, 0);" class="button" style="border-style: solid;border-width: thin;">Ausschalten</a> 
+		{% else %} 
+			<a onclick="toggle(this, 0);" class="button" style="border-style: solid;border-width: thin;">Einschalten</a>  
+		{% endif %}	 
+	</h3> 
+  </body> 
+  <script>
+    function toggle(element,light){
+	var xml = new XMLHttpRequest();
+	xml.open("GET","light/"+light+"/toggle",false);
+	xml.send(null);
+	myObj = JSON.parse(xml.responseText);
+	if (myObj.state==0){
+	  element.innerHTML= "Einschalten";
+	} else {
+	  element.innerHTML= "Ausschalten";
+	}
+	
+    }
+  </script>
+</html>
