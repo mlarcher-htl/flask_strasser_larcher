@@ -3,6 +3,10 @@ from flask import Flask, render_template, request
 import RPi.GPIO as GPIO
 import json
 import Adafruit_DHT
+import time
+import threading
+import atexit
+
 
 GPIO.setmode(GPIO.BCM)  # Sets up the RPi lib to use the Broadcom pin mappings
                         #  for the pin names. This corresponds to the pin names
@@ -10,6 +14,7 @@ GPIO.setmode(GPIO.BCM)  # Sets up the RPi lib to use the Broadcom pin mappings
 GPIO.setwarnings(False) # Turn off warnings that may crop up if you have the
                         #  GPIO pins exported for use via command line
 GPIO.setup(5, GPIO.OUT) # Set GPIO2 as an output
+GPIO.setup(6, GPIO.OUT) # Set GPIO2 as an output
 
 sensor=Adafruit_DHT.DHT11
 sensor_pin=21
@@ -33,13 +38,15 @@ def add_header(r):
 def index():
     # Read GPIO Status
     led0sts = GPIO.input(5)
+    led1sts = GPIO.input(6)
     humidity,temperature=Adafruit_DHT.read_retry(sensor,sensor_pin)
     templateData = {
             'led0'  : led0sts,
+            'led1'  : led1sts,
             'temperature'  : temperature,
             'humidity'  : humidity
         }
-    return render_template('dashboard.html', **templateData)
+    return render_template('dashboard2.html', **templateData)
 
 @app.route('/gpio/<string:id>/<string:level>')
 def setGPIOLevel(id, level):
@@ -56,7 +63,7 @@ def setGPIOLevel(id, level):
         outputState=0
     return json.dumps({'state': outputState, 'pin':int(id) }, sort_keys=True, indent=4)
 
-lightPinArray=[5]
+lightPinArray=[5,6]
 
 @app.route('/light/<string:id>/<string:level>')
 def setLightLevel(id, level):
@@ -75,11 +82,22 @@ def setLightLevel(id, level):
 
 @app.route("/climate/")
 def getClimateData():
-    humidity,temperature=Adafruit_DHT.read_retry(sensor,sensor_pin)
     if (humidity is int and temperature is float):
         return json.dumps({'humidity': "error", 'temperature':"error" }, sort_keys=True, indent=4)
     else:
         return json.dumps({'humidity': int(humidity), 'temperature':float(temperature) }, sort_keys=True, indent=4)
+   
+global humidity
+global temperature
+def foo():
+    humi, temp=Adafruit_DHT.read_retry(sensor,sensor_pin)
+    humidity = humi
+    temperature = temp
+    print("Temp: %(temp) - Humi: %(humi)"%(temp, humi))
+    threading.Timer(10, foo).start()
+
+
+        
 
 # If we're running this script directly, this portion executes. The Flask
 #  instance runs with the given parameters. Note that the "host=0.0.0.0" part
@@ -87,3 +105,4 @@ def getClimateData():
 #  outside world.
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000)
+    
