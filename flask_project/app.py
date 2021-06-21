@@ -1,27 +1,67 @@
-#!/usr/bin/python
-from flask import Flask, render_template, request
-import RPi.GPIO as GPIO
-import json
-import Adafruit_DHT
-import time
 import threading
 import atexit
+from flask import Flask, render_template
+from gpiozero import LED, PWMLED
+import RPi.GPIO as GPIO
+import Adafruit_DHT
+import json
 
+POOL_TIME = 60 #Seconds
 
-GPIO.setmode(GPIO.BCM)  # Sets up the RPi lib to use the Broadcom pin mappings
-                        #  for the pin names. This corresponds to the pin names
-                        #  given in most documentation of the Pi header
-GPIO.setwarnings(False) # Turn off warnings that may crop up if you have the
-                        #  GPIO pins exported for use via command line
-GPIO.setup(5, GPIO.OUT) # Set GPIO2 as an output
-GPIO.setup(6, GPIO.OUT) # Set GPIO2 as an output
+# variables that are accessible from anywhere
+commonDataStruct = {"temperature":998,"humidity":998}
+# lock to control access to variable
+dataLock = threading.Lock()
+# thread handler
+climateThread = threading.Thread()
 
-sensor=Adafruit_DHT.DHT11
-sensor_pin=21
+GPIO.setmode(GPIO.BCM)  
+GPIO.setwarnings(False) 
+led0=PWMLED(5)
+led1=PWMLED(6)
 
-app = Flask(__name__)   # Create an instance of flask called "app"
+climateSensor=Adafruit_DHT.DHT11
+climateSensor_pin=21
 
-@app.after_request
+def create_app():
+    app = Flask(__name__)
+
+    def interrupt():
+        global climateThread
+        climateThread.cancel()
+
+    def readSensor():
+        with dataLock:
+            humidity,temperature=Adafruit_DHT.read_retry(climateSensor,climateSensor_pin)
+            commonDataStruct["temperature"]=temperature
+            commonDataStruct["humidity"]=humidity
+        print("T: %.2f / H: %.0f" %(temperature,humidity))
+    def getPeriodicalClimateData():
+        global commonDataStruct
+        global climateThread
+        readSensor()
+        # Set the next thread to happen
+        climateThread = threading.Timer(POOL_TIME, getPeriodicalClimateData, ())
+        climateThread.start()   
+
+    def initiatePeriodicalClimateData():
+        # Do initialisation stuff here
+        global climateThread
+        # Create your thread
+        print("StartThread")
+        climateThread = threading.Timer(POOL_TIME, getPeriodicalClimateData, ())
+        climateThread.start()
+
+    # Initiate
+    initiatePeriodicalClimateData()
+    readSensor()
+    # When you kill Flask (SIGTERM), clear the trigger for the next thread
+    atexit.register(interrupt)
+    return app
+
+app = create_app()
+
+@app.after_request #Caching deaktivieren
 def add_header(r):
     """
     Add headers to both force latest IE rendering engine or Chrome Frame,
@@ -34,21 +74,24 @@ def add_header(r):
     return r
 
 
-@app.route("/")         # This is our default handler, if no path is given
+@app.route("/") # Startseite
 def index():
     # Read GPIO Status
-    led0sts = GPIO.input(5)
-    led1sts = GPIO.input(6)
-    humidity,temperature=Adafruit_DHT.read_retry(sensor,sensor_pin)
+    led0sts = led0.is_lit
+    led1sts = led1.is_lit
+    with dataLock:
+        temp = commonDataStruct["temperature"]
+        humi = commonDataStruct["humidity"]
+    #humidity,temperature=Adafruit_DHT.read_retry(Adafruit_DHT.DHT11,21)
     templateData = {
             'led0'  : led0sts,
             'led1'  : led1sts,
-            'temperature'  : temperature,
-            'humidity'  : humidity
+            'temperature'  : temp,
+            'humidity'  : humi
         }
     return render_template('dashboard2.html', **templateData)
 
-@app.route('/gpio/<string:id>/<string:level>')
+@app.route('/gpio/<string:id>/<string:level>') #Spezielle GPIOs schalten (true, false, toggle)
 def setGPIOLevel(id, level):
     if level=="toggle":
         GPIO.output(int(id), not(GPIO.input(int(id))))
@@ -65,39 +108,41 @@ def setGPIOLevel(id, level):
 
 lightPinArray=[5,6]
 
-@app.route('/light/<string:id>/<string:level>')
-def setLightLevel(id, level):
-    if level=="toggle":
-        GPIO.output(int(lightPinArray[int(id)]), not(GPIO.input(int(lightPinArray[int(id)]))))
-    elif level == "false":
-        GPIO.output(int(lightPinArray[int(id)]), 0)
-    elif level == "true":
-        GPIO.output(int(lightPinArray[int(id)]), 1)
-        
-    if GPIO.input(int(lightPinArray[int(id)])):
-        outputState=1
-    else:
-        outputState=0
-    return json.dumps({'state': outputState, 'pin':int(lightPinArray[int(id)]) }, sort_keys=True, indent=4)
+def is_lit(led):
+    return led.is_lit
+def value(led):
+    return led.value
 
-@app.route("/climate/")
+@app.route('/light/<id>/', defaults={'level':None, 'dimlevel': None})
+@app.route('/light/<id>/<level>/', defaults={'dimlevel': None}) #die oben indizierten LEDs steuern (true, false, toggle)
+@app.route('/light/<id>/<level>/<dimlevel>')
+def setLightLevel(id, level, dimlevel):
+    if level=="toggle":
+        exec("led"+id+".toggle()")
+    elif level == "false":
+        exec("led"+id+".off()")
+    elif level == "true":
+       exec("led"+id+".on()")
+    elif level == "dim":
+        exec("led"+id+".value="+str(float(dimlevel)/100))
+        
+    if exec("led"+id+".is_lit"):
+        outputState=0
+    else:
+        outputState=1
+    #exec("dimlevel=led"+id+".value")
+    return json.dumps({'state': is_lit(eval("led"+id)), 'dimlevel': value(eval("led"+id))*100, 'pin':int(lightPinArray[int(id)]) }, sort_keys=True, indent=4)
+
+@app.route("/climate/") #Klimadaten abrufen
 def getClimateData():
+    with dataLock:
+        temperature = commonDataStruct["temperature"]
+        humidity = commonDataStruct["humidity"]
+    
     if (humidity is int and temperature is float):
         return json.dumps({'humidity': "error", 'temperature':"error" }, sort_keys=True, indent=4)
     else:
         return json.dumps({'humidity': int(humidity), 'temperature':float(temperature) }, sort_keys=True, indent=4)
-   
-global humidity
-global temperature
-def foo():
-    humi, temp=Adafruit_DHT.read_retry(sensor,sensor_pin)
-    humidity = humi
-    temperature = temp
-    print("Temp: %(temp) - Humi: %(humi)"%(temp, humi))
-    threading.Timer(10, foo).start()
-
-
-        
 
 # If we're running this script directly, this portion executes. The Flask
 #  instance runs with the given parameters. Note that the "host=0.0.0.0" part
@@ -105,4 +150,3 @@ def foo():
 #  outside world.
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5000)
-    

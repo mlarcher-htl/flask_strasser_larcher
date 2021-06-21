@@ -40,12 +40,14 @@
 				</div>
 				<div class="col">
 					<div class="form-check form-switch">
-						<label class="form-check-label" for="flexSwitchCheckDefault">Licht1</label>
-						<input onclick="toggle(this, 0);" class="form-check-input" type="checkbox" id="flexSwitchCheckDefault" {% if  led0   == 1 %} checked {% endif %}	 >
+						<label class="form-check-label" for="flexSwitchCheckDefault">Licht1 (PIN5)</label>
+						<input onclick="toggle(this, 0);" class="form-check-input" type="checkbox" id="lightSwitch0">
+						<input onchange="dim(this, 0);" type="range" class="form-range" min="0" max="100" step="10" id="valueLight0">
 					</div>
 					<div class="form-check form-switch">
-						<label class="form-check-label" for="flexSwitchCheckDefault">Licht2</label>
-						<input onclick="toggle(this, 1);" class="form-check-input" type="checkbox" id="flexSwitchCheckDefault" {% if  led1   == 1 %} checked {% endif %}>
+						<label class="form-check-label" for="flexSwitchCheckDefault">Licht2 (PIN6)</label>
+						<input onclick="toggle(this, 1);" class="form-check-input" type="checkbox" id="lightSwitch1">
+						<input onchange="dim(this, 1);" type="range" class="form-range" min="0" max="100" step="10" id="valueLight1">
 					</div>
 				</div>
 				<div class="col">
@@ -55,8 +57,8 @@
 		<div class="col">
 			<h3 class="text-center">Klimadaten</h3>
 			<div class="container text-center">
-				<p>Temperatur: {{ temperature  }}°C</p>
-				<p>Luftfeuchtigkeit: {{ humidity }}%</p>
+				<p id="temp">Temperatur: {{ temperature  }}°C</p>
+				<p id="humi">Luftfeuchtigkeit: {{ humidity }}%</p>
 			</div>
 		</div>
 	</div>
@@ -64,19 +66,69 @@
 
     <!-- Option 1: Bootstrap Bundle with Popper -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.1/dist/js/bootstrap.bundle.min.js" integrity="sha384-gtEjrD/SeCtmISkJkNUaaKMoLD0//ElJ19smozuHV6z3Iehds+3Ulb9Bn9Plx0x4" crossorigin="anonymous"></script>
+	
 	<script>
-	function toggle(element,light){
+	function sync(light){
 		var xml = new XMLHttpRequest();
-		xml.open("GET","light/"+light+"/toggle",false);
+		xml.open("GET","light/"+light,false);
 		xml.send(null);
 		myObj = JSON.parse(xml.responseText);
 		if (myObj.state==0){
-		  element.innerHTML= "Einschalten";
+			document.getElementById("lightSwitch"+light).checked = false;
+			document.getElementById("valueLight"+light).value = 0;
 		} else {
-		  element.innerHTML= "Ausschalten";
+			document.getElementById("lightSwitch"+light).checked = true;
+			document.getElementById("valueLight"+light).value = myObj.dimlevel;
 		}
 	
+		
+	}
+	function toggle(element,light){
+		onoff=document.getElementById("lightSwitch"+light).checked
+		var xml = new XMLHttpRequest();
+		if (onoff==true){
+			xml.open("GET","light/"+light+"/true",false);
+		} else {
+			xml.open("GET","light/"+light+"/false",false);
+		}
+		xml.send(null);
+		myObj = JSON.parse(xml.responseText);
+		if (myObj.state==0){
+		 document.getElementById("lightSwitch"+light).checked = false;
+		} else {
+		  document.getElementById("lightSwitch"+light).checked = true;
+		}
+		sync(light);
+	
     }
+	function dim(element,light){
+		var brightness = element.value;
+		var xml = new XMLHttpRequest();
+		xml.open("GET","light/"+light+"/dim/"+brightness,false);
+		xml.send(null);
+		myObj = JSON.parse(xml.responseText);
+		sync(light);
+    }
+	
+	function getClimate(){
+		var xml = new XMLHttpRequest();
+		xml.open("GET","climate/",false);
+		xml.send(null);
+		myObj = JSON.parse(xml.responseText);
+		document.getElementById("temp").innerHTML = myObj.temperature;
+		document.getElementById("humi").innerHTML = myObj.humidity;
+	}
+	
+	</script>
+	<script>
+	(function() {
+		// your page initialization code here
+		// the DOM will be available here
+		sync(0);
+		sync(1);
+		
+		setInterval(getClimate, 1000*60*10)
+	})();
 	</script>
     <!-- Option 2: Separate Popper and Bootstrap JS -->
     <!--
