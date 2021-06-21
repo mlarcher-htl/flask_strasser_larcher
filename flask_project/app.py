@@ -6,7 +6,7 @@ import RPi.GPIO as GPIO
 import Adafruit_DHT
 import json
 
-POOL_TIME = 60 #Seconds
+POOL_TIME = 60*5 #Alle 5 Minuten werden Wetterdaten erfasst
 
 # variables that are accessible from anywhere
 commonDataStruct = {"temperature":998,"humidity":998}
