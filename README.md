@@ -2,4 +2,6 @@
 
 Dieses Repository wird im Rahmen des FSST Unterrichts an der HTL-Anichstraße verwaltet/verwendet.
 
-##ML
+## ML
+
+Jetzt ist das Projekt ziemlich fertig und wir haben eine tolle Weboberfläche erstellt, welche man im Unterricht anschauen kann.
